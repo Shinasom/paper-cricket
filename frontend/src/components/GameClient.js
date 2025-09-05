@@ -11,9 +11,15 @@ export default function GameClient({ matchId }) {
   const [socket, setSocket] = useState(null);
   const [gameState, setGameState] = useState(null);
   const [log, setLog] = useState([]);
-  const [playerChoice, setPlayerChoice] = useState('A');
+  const [playerChoice, setPlayerChoice] = useState(null);
+  const [lastBallOutcome, setLastBallOutcome] = useState(null); // State for the overlay
 
-  const letterChoices = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  const letterChoices = [
+    { letter: 'A', runs: 1 }, { letter: 'B', runs: 2 },
+    { letter: 'C', runs: 3 }, { letter: 'D', runs: 4 },
+    { letter: 'E', runs: 6 }, { letter: 'F', runs: 4 },
+    { letter: 'G', runs: 6 }
+  ];
 
   useEffect(() => {
     if (!matchId || !user) return;
@@ -35,11 +41,14 @@ export default function GameClient({ matchId }) {
 
       if (data.type === 'game_state_update') {
         setGameState(data.payload);
+        setPlayerChoice(null); 
         const lastBall = data.payload.last_ball;
-        // Add to log only if a new ball has been played
         if (lastBall && data.payload.balls_played > (gameState?.balls_played ?? -1)) {
-          const outcome = lastBall.is_wicket ? "OUT!" : `${lastBall.runs_scored} runs!`;
-          setLog(prev => [...prev, `Ball Result: ${outcome}`]);
+          const outcomeText = lastBall.is_wicket ? "OUT!" : `${lastBall.runs_scored}`;
+          const outcomeRuns = lastBall.is_wicket ? null : lastBall.runs_scored;
+          // Set the state for the overlay
+          setLastBallOutcome({ text: outcomeText, runs: outcomeRuns, isWicket: lastBall.is_wicket });
+          setLog(prev => [...prev, `Ball Result: ${lastBall.is_wicket ? "OUT!" : `${lastBall.runs_scored} runs!`}`]);
         }
       } else if (data.type === 'info_message') {
         setLog(prev => [...prev, `Info: ${data.message}`]);
@@ -50,9 +59,20 @@ export default function GameClient({ matchId }) {
 
     setSocket(newSocket);
     return () => newSocket.close();
-  }, [matchId, user, router]);
+  }, [matchId, user, router, gameState?.balls_played]);
 
-  const handleSendMove = () => {
+  // This effect makes the overlay disappear after a short time
+  useEffect(() => {
+    if (lastBallOutcome) {
+      const timer = setTimeout(() => {
+        setLastBallOutcome(null);
+      }, 1500); // Overlay will be visible for 1.5 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [lastBallOutcome]);
+
+  const handleChoiceAndSubmit = (choice) => {
+    setPlayerChoice(choice);
     if (socket && user && gameState) {
       let action = '';
       if (gameState.turn === user.username && gameState.batting_player === user.username) {
@@ -60,12 +80,8 @@ export default function GameClient({ matchId }) {
       } else if (gameState.turn === user.username && gameState.bowling_player === user.username) {
         action = 'bowl';
       }
-
       if (action) {
-        socket.send(JSON.stringify({
-          action: action,
-          choice: playerChoice,
-        }));
+        socket.send(JSON.stringify({ action: action, choice: choice }));
       }
     }
   };
@@ -75,10 +91,27 @@ export default function GameClient({ matchId }) {
   }
   
   const isMyTurn = user && gameState.status === 'ongoing' && gameState.turn === user.username;
+  const runsNeeded = gameState.target ? Math.max(0, gameState.target - gameState.score) : null;
+  const totalBalls = gameState.total_overs * 6;
+  const ballsRemaining = totalBalls - gameState.balls_played;
 
   return (
-    <main className="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4 sm:p-8">
-      <div className="w-full max-w-2xl space-y-6">
+    <main className="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4 sm:p-8 relative overflow-hidden">
+      {/* --- ADDED CSS FOR THE ANIMATION --- */}
+      <style jsx global>{`
+        @keyframes fade-in-out-scale {
+          0% { opacity: 0; transform: scale(0.8); }
+          20% { opacity: 1; transform: scale(1.1); }
+          80% { opacity: 1; transform: scale(1.0); }
+          100% { opacity: 0; transform: scale(0.9); }
+        }
+        .animate-pop-up {
+          animation: fade-in-out-scale 1.5s ease-in-out forwards;
+        }
+      `}</style>
+      
+      <div className="w-full max-w-2xl space-y-6 z-10">
+        {/* ... (header and scoreboard remain the same) ... */}
         <header className="text-center">
             <h1 className="text-4xl sm:text-5xl font-bold">Paper Cricket</h1>
             <p className="text-gray-400 mt-1">Match ID: {gameState.match_code} | Playing as: <strong className="text-yellow-400">{user.username}</strong></p>
@@ -96,23 +129,39 @@ export default function GameClient({ matchId }) {
             <p className="text-5xl font-mono my-2">{gameState.score}<span className="text-gray-400">/</span>{gameState.wickets}</p>
             <p className="text-gray-400">{Math.floor(gameState.balls_played / 6)}.{gameState.balls_played % 6} overs</p>
           </div>
+          
+          {gameState.current_inning === 2 && gameState.target && gameState.status === 'ongoing' && (
+            <div className="text-center mt-4 border-t border-gray-700 pt-4">
+              <p className="text-lg">
+                Needs <strong className="text-green-400 text-xl">{runsNeeded}</strong> runs in <strong className="text-green-400 text-xl">{ballsRemaining}</strong> balls to win.
+              </p>
+            </div>
+          )}
         </div>
 
         {gameState.status === 'ongoing' && (
           <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <h3 className="text-2xl font-semibold mb-4">{isMyTurn ? `Your Turn (${user.username})` : `Waiting for ${gameState.turn}...`}</h3>
-            <div className="flex items-center gap-4">
-              <label className="font-bold">Your Choice:</label>
-              <select value={playerChoice} onChange={(e) => setPlayerChoice(e.target.value)} disabled={!isMyTurn} className="bg-gray-700 p-2 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none">
-                {letterChoices.map(l => <option key={l} value={l}>{l}</option>)}
-              </select>
-              <button onClick={handleSendMove} disabled={!isMyTurn} className={`px-6 py-2 rounded-md font-bold text-white transition-colors ${!isMyTurn ? 'bg-gray-600 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-600'}`}>
-                Submit Move
-              </button>
+            <h3 className="text-2xl font-semibold mb-4 text-center">{isMyTurn ? `Your Turn (${user.username})` : `Waiting for ${gameState.turn}...`}</h3>
+            <div className="grid grid-cols-4 gap-3 my-4">
+              {letterChoices.map(({ letter, runs }) => (
+                <button
+                  key={letter}
+                  onClick={() => handleChoiceAndSubmit(letter)}
+                  disabled={!isMyTurn}
+                  className={`p-3 rounded-lg text-center font-bold transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    playerChoice === letter ? 'bg-yellow-500 text-gray-900 ring-2 ring-white' : 'bg-gray-700 hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="text-2xl">{letter}</div>
+                  <div className="text-xs">{runs} {runs === 1 ? 'run' : 'runs'}</div>
+                </button>
+              ))}
+              <div className="col-start-2"></div>
             </div>
           </div>
         )}
 
+        {/* ... (log and winner display remain the same) ... */}
         {gameState.status === 'completed' ? (
           <div className="text-center p-6 bg-green-800 rounded-lg shadow-lg">
             <h2 className="text-3xl font-bold">Match Over!</h2>
@@ -127,6 +176,25 @@ export default function GameClient({ matchId }) {
           </div>
         )}
       </div>
+
+      {/* --- NEW OUTCOME OVERLAY --- */}
+      {lastBallOutcome && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+          <div
+            key={gameState.balls_played} // Re-triggers the animation on each ball
+            className={`px-10 py-6 rounded-lg shadow-2xl animate-pop-up flex flex-col items-center ${
+              lastBallOutcome.isWicket ? 'bg-red-600' : 'bg-green-600'
+            }`}
+          >
+            <span className="text-7xl font-black text-white">{lastBallOutcome.text}</span>
+            {!lastBallOutcome.isWicket && (
+              <span className="text-2xl font-semibold text-white mt-1">
+                {lastBallOutcome.runs === 1 ? 'RUN' : 'RUNS'}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
