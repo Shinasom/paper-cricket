@@ -41,6 +41,18 @@ class Match(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def target_runs(self):
+        """
+        Calculates the target score for the team batting second.
+        The target is the score of the first innings + 1.
+        """
+        # A target only exists if there is a first innings.
+        first_inning = self.innings.filter(innings_order=1).first()
+        if first_inning:
+            return first_inning.runs + 1
+        return None # No target yet if first innings isn't played.
+
     def __str__(self):
         return f"Match {self.match_code} ({self.status})"
 
@@ -61,20 +73,6 @@ class Inning(models.Model):
 
     def __str__(self):
         return f"Match {self.match.match_code} - Inning {self.innings_order}"
-    @property
-    def target_runs(self):
-        """
-        Calculates the target score for the team batting second.
-        The target is the score of the first innings + 1.
-        """
-        # A target only exists if the first innings is complete.
-        first_inning = self.innings.filter(innings_order=1).first()
-        if first_inning:
-            return first_inning.runs + 1
-        return None # No target yet if first innings isn't played.
-
-    def __str__(self):
-        return f"Match {self.match_code} ({self.status})"
 
 
 class Ball(models.Model):

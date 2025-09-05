@@ -37,6 +37,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
     # Our custom app
     'game',
     'rest_framework',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -137,3 +139,12 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # At the bottom of backend/core/settings.py
 ASGI_APPLICATION = "core.asgi.application"
+
+# At the bottom of backend/core/settings.py
+
+# Channels
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
