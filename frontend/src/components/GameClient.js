@@ -1,12 +1,12 @@
-// src/components/GameClient.js
-
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/context/AuthContext'; // 1. Import our auth hook
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function GameClient({ matchId }) {
-  const { user } = useAuth(); // 2. Get the currently logged-in user
+  const { user } = useAuth();
+  const router = useRouter();
   
   const [socket, setSocket] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -16,9 +16,16 @@ export default function GameClient({ matchId }) {
   const letterChoices = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
   useEffect(() => {
-    if (!matchId) return;
+    if (!matchId || !user) return;
 
-    const newSocket = new WebSocket(`ws://127.0.0.1:8000/ws/game/${matchId}/`);
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+        router.push('/');
+        return;
+    }
+
+    const wsUrl = `ws://127.0.0.1:8000/ws/game/${matchId}/?token=${accessToken}`;
+    const newSocket = new WebSocket(wsUrl);
 
     newSocket.onopen = () => setLog(prev => ['Status: Connected!']);
     newSocket.onclose = () => setLog(prev => [...prev, 'Status: Disconnected.']);
@@ -29,7 +36,8 @@ export default function GameClient({ matchId }) {
       if (data.type === 'game_state_update') {
         setGameState(data.payload);
         const lastBall = data.payload.last_ball;
-        if (lastBall) {
+        // Add to log only if a new ball has been played
+        if (lastBall && data.payload.balls_played > (gameState?.balls_played ?? -1)) {
           const outcome = lastBall.is_wicket ? "OUT!" : `${lastBall.runs_scored} runs!`;
           setLog(prev => [...prev, `Ball Result: ${outcome}`]);
         }
@@ -42,10 +50,10 @@ export default function GameClient({ matchId }) {
 
     setSocket(newSocket);
     return () => newSocket.close();
-  }, [matchId]);
+  }, [matchId, user, router]);
 
   const handleSendMove = () => {
-    if (socket && user && gameState) { // 4. Check for `user` instead of `actingAs`
+    if (socket && user && gameState) {
       let action = '';
       if (gameState.turn === user.username && gameState.batting_player === user.username) {
         action = 'bat';
@@ -54,7 +62,6 @@ export default function GameClient({ matchId }) {
       }
 
       if (action) {
-        // 5. Send the move WITHOUT the username
         socket.send(JSON.stringify({
           action: action,
           choice: playerChoice,
@@ -67,7 +74,6 @@ export default function GameClient({ matchId }) {
     return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Connecting to game...</div>;
   }
   
-  // 3. Update the `isMyTurn` logic to use the real user
   const isMyTurn = user && gameState.status === 'ongoing' && gameState.turn === user.username;
 
   return (
@@ -75,10 +81,8 @@ export default function GameClient({ matchId }) {
       <div className="w-full max-w-2xl space-y-6">
         <header className="text-center">
             <h1 className="text-4xl sm:text-5xl font-bold">Paper Cricket</h1>
-            <p className="text-gray-400 mt-1">Match ID: {gameState.match_code} | Status: <span className="font-semibold">{gameState.status}</span></p>
+            <p className="text-gray-400 mt-1">Match ID: {gameState.match_code} | Playing as: <strong className="text-yellow-400">{user.username}</strong></p>
         </header>
-        
-        {/* The "Test Controls" div is now completely GONE! */}
 
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
           <div className="flex justify-between items-center mb-4">
@@ -126,3 +130,4 @@ export default function GameClient({ matchId }) {
     </main>
   );
 }
+

@@ -1,14 +1,12 @@
-// src/app/page.js
-
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext'; // Import our custom auth hook
-import { createMatch, joinMatch } from '@/lib/api'; // Import our API functions
+import { createMatch, joinMatch } from '@/lib/api'; // Import our JWT-aware API functions
 
 export default function HomePage() {
-  const { user, login, register, loading } = useAuth(); // Get user and functions from context
+  const { user, login, register, logout, loading } = useAuth(); // Get user and functions from context
   const router = useRouter();
 
   // State for the forms
@@ -29,7 +27,6 @@ export default function HomePage() {
       } else {
         await register(username, password);
       }
-      // The context will handle redirecting after successful login/register
     } catch (err) {
       setError(err.message || 'An error occurred.');
     } finally {
@@ -44,7 +41,8 @@ export default function HomePage() {
     }
     setIsLoading(true);
     try {
-      const newMatch = await createMatch(user.username, 1, 2); // Using logged-in user's name
+      // The API call no longer needs the username
+      const newMatch = await createMatch(1, 2); // Hardcoded 1 over, 2 wickets for now
       router.push(`/game/${newMatch.match_code}`);
     } catch (err) {
       setError(err.message);
@@ -59,7 +57,8 @@ export default function HomePage() {
     }
     setIsLoading(true);
     try {
-      const match = await joinMatch(user.username, matchCode);
+      // The API call no longer needs the username
+      const match = await joinMatch(matchCode);
       router.push(`/game/${match.match_code}`);
     } catch (err) {
       setError(err.message);
@@ -76,10 +75,23 @@ export default function HomePage() {
       <div className="w-full max-w-md space-y-8">
         <header className="text-center">
           <h1 className="text-4xl sm:text-5xl font-bold">Paper Cricket</h1>
-          <p className="text-gray-400 mt-2">{user ? `Welcome, ${user.username}!` : "The classic notebook game, now online."}</p>
+          <div className="text-gray-400 mt-2 flex justify-center items-center gap-4">
+            {user ? (
+              <>
+                <span>Welcome, {user.username}!</span>
+                <button 
+                  onClick={logout} 
+                  className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 rounded-md"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              "The classic notebook game, now online."
+            )}
+          </div>
         </header>
 
-        {/* --- CONDITIONAL RENDERING --- */}
         {user ? (
           // SHOW THIS IF USER IS LOGGED IN
           <div className="bg-gray-800 p-8 rounded-lg shadow-lg">
@@ -121,3 +133,4 @@ export default function HomePage() {
     </main>
   );
 }
+

@@ -1,58 +1,65 @@
-// src/context/AuthContext.js
-
 'use client';
 
 import { createContext, useState, useContext, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import * as api from '@/lib/api'; // Import all our api functions
+import * as api from '@/lib/api'; // This is our updated, JWT-aware api service
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // To check for existing session
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if a user session exists when the app loads
-    async function checkUserSession() {
-      try {
-        const userData = await api.getCurrentUser(); // We need to create this API function
-        setUser(userData);
-      } catch (error) {
-        setUser(null);
-      } finally {
-        setLoading(false);
+    // Check for an existing token when the app loads
+    async function initializeAuth() {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        try {
+          // Verify the token by fetching the user data
+          const userData = await api.getCurrentUser();
+          setUser(userData);
+        } catch (error) {
+          // This can happen if the token is expired or invalid
+          console.error("Failed to initialize auth with token", error);
+          setUser(null);
+          // Clean up old tokens
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+        }
       }
+      setLoading(false);
     }
-    checkUserSession();
+    initializeAuth();
   }, []);
 
   const login = async (username, password) => {
     try {
-      const userData = await api.loginUser(username, password); // We need to create this
+      // The api.loginUser function handles storing tokens in localStorage
+      await api.loginUser(username, password);
+      // After tokens are stored, we fetch the user data to update our global state
+      const userData = await api.getCurrentUser();
       setUser(userData);
-      // Redirect to home page or dashboard after login
       router.push('/');
     } catch (error) {
-      // Re-throw the error so the form can display it
       throw error;
     }
   };
-
+  
   const register = async (username, password) => {
     try {
-      const userData = await api.registerUser(username, password); // We need to create this
-      setUser(userData);
-      // Log in the user automatically after registration
+      await api.registerUser(username, password);
+      // After a successful registration, we immediately log the user in
       await login(username, password);
     } catch (error) {
       throw error;
     }
   };
 
-  const logout = async () => {
-    await api.logoutUser(); // We need to create this
+  const logout = () => {
+    // The api.logoutUser function now just clears the tokens from localStorage
+    api.logoutUser();
     setUser(null);
     router.push('/');
   };
@@ -61,12 +68,14 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={value}>
+      {/* We wait until the initial loading is done before rendering the app */}
       {!loading && children}
     </AuthContext.Provider>
   );
 }
 
-// Custom hook to use the AuthContext
+// This custom hook makes it easy for any component to access the auth context
 export const useAuth = () => {
   return useContext(AuthContext);
 };
+
