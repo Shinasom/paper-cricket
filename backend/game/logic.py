@@ -20,40 +20,34 @@ class GameLogicEngine:
             raise ValueError(f"Match with code {match_code} not found.")
 
     def _get_or_create_inning(self):
-        """Finds the current active inning, creates the next one, or raises an error if the game is over."""
+        """
+        Finds the current active inning for an ongoing match.
+        If the first inning is over, it creates the second one.
+        """
+        if self.match.status != 'ongoing':
+            raise ValueError("Match is not in an ongoing state.")
+
         latest_inning = self.match.innings.order_by('-innings_order').first()
 
-        # Case 1: No innings exist yet. Create the first one.
         if latest_inning is None:
-            # SIMPLIFICATION: We assume player1 bats first. A full implementation would use toss data.
-            print(f"Creating first inning for match {self.match.match_code}")
-            return Inning.objects.create(
-                match=self.match,
-                batting_player=self.match.player1,
-                bowling_player=self.match.player2,
-                innings_order=1
-            )
+            # This is an error state. An 'ongoing' match must have an inning created by the JoinMatchView.
+            raise ValueError("No innings found for this ongoing match.")
 
-        # Case 2: An inning exists. Check if it's over.
-        is_over = self._is_inning_over(latest_inning)
-        if not is_over:
-            # The latest inning is still in progress.
-            return latest_inning
-        
-        # Case 3: The latest inning is over. Decide what's next.
-        if latest_inning.innings_order == 1:
-            # First innings just finished. Create the second one.
+        # If the latest inning is over and it was the first, create the second inning.
+        if self._is_inning_over(latest_inning) and latest_inning.innings_order == 1:
             print(f"Creating second inning for match {self.match.match_code}")
-            return Inning.objects.create(
+            inning = Inning.objects.create(
                 match=self.match,
-                batting_player=self.match.player2, # Players swap roles
+                batting_player=self.match.player2,
                 bowling_player=self.match.player1,
                 innings_order=2
             )
-        else: # The second innings is over.
-            # The game is complete. No more innings can be played.
-            raise ValueError("This match has already been completed.")
-
+            inning.turn = inning.bowling_player
+            inning.save()
+            return inning
+        
+        # Otherwise, the latest inning is the one we're currently playing.
+        return latest_inning
 
     def _is_inning_over(self, inning):
         """Checks if an inning has concluded based on wickets or overs."""
@@ -66,28 +60,24 @@ class GameLogicEngine:
             inning1_score = self.match.innings.get(innings_order=1).runs
             inning2_score = self.inning.runs
         except Inning.DoesNotExist:
-            # Should not happen in a normal game flow
             return
 
         winner = None
         if inning2_score > inning1_score:
-            winner = self.inning.batting_player # Chasing team won
+            winner = self.inning.batting_player
         elif inning1_score > inning2_score:
-            winner = self.inning.bowling_player # First team won
+            winner = self.inning.bowling_player
         
         self.match.winner = winner
         self.match.status = 'completed'
         self.match.save()
         print(f"Match {self.match.match_code} completed. Winner: {winner}")
 
-    # In backend/game/logic.py
-
     def process_turn(self, bowler_choice, batsman_choice):
         """Processes a single ball, updates state, and returns the new state."""
-        if self.match.status != 'ongoing':
-            raise ValueError("This match is not ongoing.")
+        if self._is_inning_over(self.inning) and self.inning.innings_order == 2:
+             raise ValueError("This match has already been completed.")
 
-        # --- Core Game Logic (This part is correct) ---
         self.inning.balls_played += 1
         runs_scored = RUN_MAP.get(batsman_choice, 0)
         is_wicket = bowler_choice == batsman_choice
@@ -98,7 +88,6 @@ class GameLogicEngine:
         else:
             self.inning.runs += runs_scored
         
-        # --- Database Logging (This part is correct) ---
         over_no = (self.inning.balls_played - 1) // 6 + 1
         ball_no = (self.inning.balls_played - 1) % 6 + 1
         Ball.objects.create(
@@ -107,22 +96,12 @@ class GameLogicEngine:
             outcome='out' if is_wicket else 'runs', runs_scored=runs_scored
         )
 
-        # --- FIX IS HERE: Corrected End of Game Check ---
         inning_is_over = self._is_inning_over(self.inning)
-
-        if self.inning.innings_order == 1 and inning_is_over:
-            # The first innings is now over.
-            # The logic in _get_or_create_inning() will handle creating the next inning
-            # when the next move comes in. We don't need to do anything else here.
-            print(f"End of Inning 1 for match {self.match.match_code}. Score: {self.inning.runs}")
-        
-        elif self.inning.innings_order == 2:
-            # We are in the second innings, so we must check for a winner.
+        if self.inning.innings_order == 2:
             target_reached = False
             target = self.match.target_runs
             if target and self.inning.runs >= target:
                 target_reached = True
-
             if inning_is_over or target_reached:
                 self._handle_match_end()
         
@@ -131,13 +110,11 @@ class GameLogicEngine:
 
     def get_game_state(self):
         """Constructs a dictionary representing the current game state."""
-        # Refresh objects from DB to ensure they are the latest
         self.match.refresh_from_db()
         self.inning.refresh_from_db()
+        
         last_ball = Ball.objects.filter(inning=self.inning).last()
-        last_ball_data = None # Default to None
-
-        # Only if a last_ball actually exists, create the data dictionary
+        last_ball_data = None
         if last_ball:
             last_ball_data = {
                 'bowler_choice': last_ball.bowler_choice,
@@ -145,19 +122,19 @@ class GameLogicEngine:
                 'runs_scored': last_ball.runs_scored,
                 'is_wicket': last_ball.outcome == 'out'
             }
-        # --- END OF FIX ---
-
+        
         return {
             'match_code': self.match.match_code,
             'status': self.match.status,
             'current_inning': self.inning.innings_order,
             'batting_player': self.inning.batting_player.username,
             'bowling_player': self.inning.bowling_player.username,
+            'turn': self.inning.turn.username if self.inning.turn else None,
             'score': self.inning.runs,
             'wickets': self.inning.wickets,
             'balls_played': self.inning.balls_played,
             'total_overs': self.match.overs,
             'target': self.match.target_runs,
             'winner': self.match.winner.username if self.match.winner else None,
-            'last_ball': last_ball_data # Use the safe variable
+            'last_ball': last_ball_data
         }

@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 from .models import Player, Match
+from django.contrib.auth.models import User
 
 # Serializer for displaying basic Player data.
 class PlayerSerializer(serializers.ModelSerializer):
@@ -35,3 +36,19 @@ class MatchSerializer(serializers.ModelSerializer):
 class MatchJoinSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=50)
     match_code = serializers.CharField(max_length=10)
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'password']
+        # This ensures the password is not sent back in the response
+        extra_kwargs = {'password': {'write_only': True}}
+
+    def create(self, validated_data):
+        # Use Django's `create_user` helper to correctly handle password hashing.
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            password=validated_data['password']
+        )
+        return user

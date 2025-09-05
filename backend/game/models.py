@@ -67,7 +67,8 @@ class Inning(models.Model):
     wickets = models.IntegerField(default=0)
     balls_played = models.IntegerField(default=0)
     innings_order = models.IntegerField() # 1 for first innings, 2 for second
-
+    turn = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, blank=True, related_name='current_turns')
+    pending_bowler_choice = models.CharField(max_length=1, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

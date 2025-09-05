@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    'corsheaders',
     # Our custom app
     'game',
     'rest_framework',
@@ -51,6 +52,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -148,3 +150,27 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
     }
 }
+
+# At the bottom of backend/core/settings.py
+
+# CORS Configuration
+# We use a whitelist for more explicit control.
+CORS_ORIGIN_WHITELIST = [
+    "http://localhost:3000",
+]
+CORS_ALLOW_CREDENTIALS = True
+
+# --- THIS IS THE NEW, CRITICAL PART ---
+# This tells Django that it's safe to accept POST requests and set cookies
+# from our frontend's origin, which is required for login to work.
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+]
+# 3. Session Cookie Configuration (THE KEY FIX)
+# This tells the browser it's okay to send the session cookie with
+# cross-origin requests, which is required for WebSocket authentication.
+SESSION_COOKIE_SAMESITE = 'None'
+#  In a real production environment with HTTPS, you would also add:
+# SESSION_COOKIE_SECURE = True
+# --------------------------------------------------
+# ------------------------------------
