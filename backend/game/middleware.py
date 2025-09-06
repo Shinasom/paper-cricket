@@ -1,8 +1,6 @@
 # backend/game/middleware.py
 import jwt
 from django.conf import settings
-from django.contrib.auth.models import AnonymousUser
-from django.contrib.auth import get_user_model
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
 
@@ -11,9 +9,12 @@ def get_user_from_token(token):
     """
     Asynchronously gets a user from a JWT access token.
     """
+    # Lazy imports
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.models import AnonymousUser
+
     print(f"\n[Middleware] Trying to authenticate with token: {token}")
     try:
-        # Decode the token to get the user ID
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         user_id = payload.get('user_id')
 
@@ -21,10 +22,7 @@ def get_user_from_token(token):
             print("[Middleware] FAILURE: Token payload does not contain user_id.")
             return AnonymousUser()
         
-        # Lazy import of User model
         User = get_user_model()
-
-        # Find the user in the database
         user = User.objects.get(id=user_id)
         print(f"[Middleware] SUCCESS: Found user '{user.username}'")
         return user
@@ -43,10 +41,10 @@ class JWTAuthMiddleware(BaseMiddleware):
     passed in the query string of a WebSocket connection.
     """
     async def __call__(self, scope, receive, send):
-        # The query string is parsed by Daphne into a byte string.
+        # Lazy import
+        from django.contrib.auth.models import AnonymousUser
+
         query_string = scope.get('query_string', b'').decode('utf-8')
-        
-        # Parse the token from the query string (e.g., "?token=...")
         token = None
         if "token=" in query_string:
             token = query_string.split('token=')[1].split('&')[0]
@@ -57,5 +55,4 @@ class JWTAuthMiddleware(BaseMiddleware):
             scope['user'] = AnonymousUser()
             print("\n[Middleware] No token found in WebSocket query string.")
 
-        # Continue processing the connection with the user attached to the scope
         return await super().__call__(scope, receive, send)
