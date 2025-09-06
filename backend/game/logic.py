@@ -1,6 +1,3 @@
-# backend/game/logic.py
-from .models import Match, Inning, Ball, Player
-
 RUN_MAP = {
     'A': 1, 'B': 2, 'C': 3,
     'D': 4, 'E': 6, 'F': 4, 'G': 6
@@ -9,7 +6,7 @@ RUN_MAP = {
 # --- STATE CHECKING FUNCTIONS ---
 
 def is_inning_over(inning):
-    """Checks if an inning has concluded based on wickets or overs."""
+    from .models import Match  # Lazy import
     match = inning.match
     overs_played = inning.balls_played // 6
     is_over = (inning.wickets >= match.wickets or overs_played >= match.overs)
@@ -18,17 +15,15 @@ def is_inning_over(inning):
     return is_over
 
 def is_match_over(match, current_inning):
-    """Checks if the match has concluded."""
+    from .models import Inning  # Lazy import
     if current_inning.innings_order == 1:
-        return False # Can't be over in the first innings
+        return False
     
-    # Check if target is reached
     target = match.target_runs
     if target and current_inning.runs >= target:
         print("[Logic] Match is over: Target reached.")
         return True
         
-    # Check if the second inning is complete by wickets/overs
     if is_inning_over(current_inning):
         print("[Logic] Match is over: Second innings complete.")
         return True
@@ -38,7 +33,7 @@ def is_match_over(match, current_inning):
 # --- STATE MODIFICATION FUNCTIONS ---
 
 def process_ball(inning, bowler_choice, batsman_choice):
-    """Processes a single ball, updates the inning, and creates a Ball record."""
+    from .models import Ball  # Lazy import
     print(f"\n[Logic] Processing Ball for Inning {inning.innings_order}:")
     print(f"  - Bowler ({inning.bowling_player.username}) chose: {bowler_choice}")
     print(f"  - Batsman ({inning.batting_player.username}) chose: {batsman_choice}")
@@ -67,7 +62,7 @@ def process_ball(inning, bowler_choice, batsman_choice):
     inning.save()
 
 def conclude_match(match, second_inning):
-    """Determines the winner and marks the match as completed."""
+    from .models import Inning  # Lazy import
     print("[Logic] Concluding match...")
     try:
         inning1_score = match.innings.get(innings_order=1).runs
@@ -91,7 +86,7 @@ def conclude_match(match, second_inning):
 # --- STATE RETRIEVAL FUNCTION ---
 
 def get_game_state(match):
-    """Constructs a dictionary representing the current game state for a given match."""
+    from .models import Ball  # Lazy import
     match.refresh_from_db()
     inning = match.innings.order_by('-innings_order').first()
     if not inning:
@@ -116,4 +111,3 @@ def get_game_state(match):
         'target': match.target_runs, 'winner': match.winner.username if match.winner else None,
         'last_ball': last_ball_data
     }
-
