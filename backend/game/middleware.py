@@ -1,7 +1,8 @@
 # backend/game/middleware.py
 import jwt
 from django.conf import settings
-from django.contrib.auth.models import AnonymousUser, User
+from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth import get_user_model
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
 
@@ -20,6 +21,9 @@ def get_user_from_token(token):
             print("[Middleware] FAILURE: Token payload does not contain user_id.")
             return AnonymousUser()
         
+        # Lazy import of User model
+        User = get_user_model()
+
         # Find the user in the database
         user = User.objects.get(id=user_id)
         print(f"[Middleware] SUCCESS: Found user '{user.username}'")
@@ -55,4 +59,3 @@ class JWTAuthMiddleware(BaseMiddleware):
 
         # Continue processing the connection with the user attached to the scope
         return await super().__call__(scope, receive, send)
-
