@@ -2,10 +2,9 @@
 
 import GameClient from '@/components/GameClient';
 
-export default function GamePage({ params }) {
-  // The `params` object is automatically passed by Next.js
-  // and contains the dynamic parts of the URL.
-  const matchId = params.matchId;
+export default async function GamePage({ params }) {
+  // Await the params object before accessing its properties
+  const { matchId } = await params;
 
   return (
     <GameClient matchId={matchId} />
