@@ -130,7 +130,10 @@ REST_FRAMEWORK = {
 }
 
 # This whitelist is all we need for CORS. The complex cookie/CSRF settings are no longer required.
+frontend_url = os.environ.get('FRONTEND_URL', '').rstrip('/')
 CORS_ORIGIN_WHITELIST = [
     "http://localhost:3000",
-    os.environ.get('FRONTEND_URL', '')
 ]
+
+if frontend_url:  # Only add if it's not empty
+    CORS_ORIGIN_WHITELIST.append(frontend_url)
