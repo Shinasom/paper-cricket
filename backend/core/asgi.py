@@ -4,25 +4,25 @@ import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 
-# Import our new JWT middleware
-from game.middleware import JWTAuthMiddleware
-
-import game.routing
-
+# Set the default settings module
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 
+# Initialize Django applications first
 django_asgi_app = get_asgi_application()
 
+# Import Channels middleware and routing after Django apps are ready
+from game.middleware import JWTAuthMiddleware
+import game.routing
+
+# Define ASGI application with HTTP and WebSocket support
 application = ProtocolTypeRouter({
-    # For HTTP requests, we use the standard Django application.
+    # HTTP requests are handled by standard Django ASGI app
     "http": django_asgi_app,
 
-    # For WebSocket requests, we now wrap the router with our new JWTAuthMiddleware.
-    # This is much simpler than the previous session-based stack.
+    # WebSocket requests use our custom JWTAuthMiddleware wrapped around the router
     "websocket": JWTAuthMiddleware(
         URLRouter(
             game.routing.websocket_urlpatterns
         )
     ),
 })
-
