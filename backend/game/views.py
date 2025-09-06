@@ -7,10 +7,7 @@ from django.contrib.auth.models import User
 
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-# --- THIS IS THE FIX ---
-# We now import the entire logic module, not a specific class
 from . import logic
-# ------------------------
 
 from .models import Player, Match, Inning
 from .serializers import (
@@ -22,6 +19,7 @@ class CreateMatchView(APIView):
     """
     Creates a new match for the currently authenticated user.
     """
+    # Explicitly require authentication for this view
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
@@ -49,6 +47,7 @@ class JoinMatchView(APIView):
     """
     Allows the currently authenticated user to join an existing match.
     """
+    # Explicitly require authentication for this view
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
@@ -82,10 +81,7 @@ class JoinMatchView(APIView):
         first_inning.turn = first_inning.bowling_player
         first_inning.save()
 
-        # --- THIS IS THE FIX ---
-        # We now call the stateless get_game_state function from our logic module
         game_state = logic.get_game_state(match)
-        # ------------------------
         
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
@@ -98,12 +94,19 @@ class JoinMatchView(APIView):
 
 
 class RegisterView(generics.CreateAPIView):
+    """
+    User registration - this should be PUBLIC (no authentication required)
+    """
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
+    # No permission_classes specified = public endpoint
 
 class UserDetailView(APIView):
+    """
+    Get current user details - requires authentication
+    """
     permission_classes = [permissions.IsAuthenticated]
+    
     def get(self, request, *args, **kwargs):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
-
