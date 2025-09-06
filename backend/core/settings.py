@@ -124,9 +124,8 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
-    )
+    # Remove the default permission class so endpoints can be public by default
+    # Individual views will specify their own permission requirements
 }
 
 # This whitelist is all we need for CORS. The complex cookie/CSRF settings are no longer required.
