@@ -119,14 +119,10 @@ CHANNEL_LAYERS = {
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        # This line tells DRF to ONLY use JWT for authentication
-        # and to ignore SessionAuthentication for the API.
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        # This makes all endpoints require authentication by default.
-        'rest_framework.permissions.IsAuthenticated',
-    )
+    # Remove the default permission class so endpoints can be public by default
+    # Individual views will specify their own permission requirements
 }
 
 # This whitelist is all we need for CORS. The complex cookie/CSRF settings are no longer required.
