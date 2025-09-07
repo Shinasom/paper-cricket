@@ -1,4 +1,5 @@
-// src/components/GameClient.js
+// UPDATED GameClient.js - Fix lobby transition issue
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,6 +21,7 @@ export default function GameClient({ matchId }) {
   const [log, setLog] = useState([]);
   const [playerChoice, setPlayerChoice] = useState(null);
   const [lastBallOutcome, setLastBallOutcome] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); // Add connection status
 
   // WebSocket connection logic
   useEffect(() => {
@@ -31,23 +33,41 @@ export default function GameClient({ matchId }) {
         return;
     }
 
-    // --- BEFORE ---
-    // const wsUrl = `ws://127.0.0.1:8000/ws/game/${matchId}/?token=${accessToken}`;
-
-    // --- AFTER ---
-    const wsHost = process.env.NEXT_PUBLIC_WS_HOST || '127.0.0.1:8000';
-    const protocol = wsHost.includes('localhost') ? 'ws://' : 'wss://';
+    // Improved WebSocket URL construction
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const wsHost = process.env.NEXT_PUBLIC_WS_HOST || 
+      (isDevelopment ? '127.0.0.1:8000' : 'paper-cricket.onrender.com');
+    const protocol = isDevelopment || wsHost.includes('localhost') ? 'ws://' : 'wss://';
     const wsUrl = `${protocol}${wsHost}/ws/game/${matchId}/?token=${accessToken}`;
+    
+    console.log('🔌 Connecting to WebSocket:', wsUrl);
     
     const newSocket = new WebSocket(wsUrl);
 
-    newSocket.onopen = () => setLog(prev => ['Status: Connected!']);
-    newSocket.onclose = () => setLog(prev => [...prev, 'Status: Disconnected.']);
+    newSocket.onopen = () => {
+      console.log('✅ WebSocket Connected!');
+      setConnectionStatus('connected');
+      setLog(['Status: Connected to match room!']);
+    };
+
+    newSocket.onclose = () => {
+      console.log('❌ WebSocket Disconnected');
+      setConnectionStatus('disconnected');
+      setLog(prev => [...prev, 'Status: Disconnected from match room.']);
+    };
+
+    newSocket.onerror = (error) => {
+      console.error('🚨 WebSocket Error:', error);
+      setConnectionStatus('error');
+    };
+
     newSocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log('Received data:', data);
+      console.log('📨 Received WebSocket message:', data);
 
       if (data.type === 'game_state_update') {
+        console.log('🎮 Game state update received:', data.payload);
+        
         setGameState(prevGameState => {
           const newGameState = data.payload;
           setPlayerChoice(null); 
@@ -69,14 +89,19 @@ export default function GameClient({ matchId }) {
           return newGameState;
         });
       } else if (data.type === 'info_message') {
+        console.log('ℹ️ Info message:', data.message);
         setLog(prev => [...prev, `Info: ${data.message}`]);
       } else if (data.error) {
+        console.error('🚨 WebSocket Error:', data.error);
         alert(`Error: ${data.error}`);
       }
     };
 
     setSocket(newSocket);
-    return () => newSocket.close();
+    return () => {
+      console.log('🔌 Closing WebSocket connection');
+      newSocket.close();
+    };
   }, [matchId, user, router]);
 
   // Ball outcome overlay timeout
@@ -100,15 +125,44 @@ export default function GameClient({ matchId }) {
         action = 'bowl';
       }
       if (action) {
+        console.log(`🎯 Sending choice: ${choice} (action: ${action})`);
         socket.send(JSON.stringify({ action: action, choice: choice }));
       }
     }
   };
+
+  // Debug: Log current state
+  console.log('🔍 Current gameState:', gameState);
+  console.log('🔍 Connection status:', connectionStatus);
   
-  // Show lobby while waiting for game to start
-  if (!gameState) {
+  // Show connection status if there's an issue
+  if (connectionStatus === 'error') {
+    return (
+      <div className="min-h-screen bg-red-50 flex items-center justify-center">
+        <div className="text-center p-8 bg-white rounded-lg shadow-lg">
+          <div className="text-4xl mb-4">❌</div>
+          <div className="text-xl font-bold text-red-600 mb-4">Connection Failed</div>
+          <div className="text-gray-600 mb-4">Unable to connect to game server</div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show lobby while waiting for game to start OR if no gameState yet
+  // FIXED: Only show lobby if status is 'waiting' or gameState doesn't exist
+  if (!gameState || gameState.status === 'waiting') {
+    console.log('🏠 Showing lobby - gameState:', gameState);
     return <EnhancedLobby matchId={matchId} gameState={gameState} />;
   }
+
+  // FIXED: Show game interface for 'ongoing' and 'completed' status
+  console.log('🎮 Showing game interface - status:', gameState.status);
 
   return (
     <div className="min-h-screen bg-blue-50 relative overflow-hidden">
@@ -130,6 +184,13 @@ export default function GameClient({ matchId }) {
               <span className="bg-yellow-200 px-2 py-1 rounded">Match: {gameState.match_code}</span>
               <span className="mx-4">•</span>
               <span className="bg-blue-100 px-2 py-1 rounded">Playing as: {user.username}</span>
+              <span className="mx-4">•</span>
+              <span className={`px-2 py-1 rounded ${
+                gameState.status === 'ongoing' ? 'bg-green-100 text-green-800' : 
+                gameState.status === 'completed' ? 'bg-red-100 text-red-800' : 'bg-yellow-100'
+              }`}>
+                Status: {gameState.status.toUpperCase()}
+              </span>
             </div>
           </div>
         </div>
